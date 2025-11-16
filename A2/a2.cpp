@@ -2,9 +2,10 @@
 #include <random>
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <iomanip>
 
 class ArrayGenerator {
     int max_size;
@@ -36,7 +37,7 @@ class ArrayGenerator {
             almost_sorted_array[i] = i;
         }
 
-        std::uniform_int_distribution<int> dist(0, max_size - 1);
+        std::uniform_int_distribution dist(0, max_size - 1);
         const int swaps = max_size / 100;
         for (int i = 0; i < swaps; ++i) {
             int idx1 = dist(rng);
@@ -66,153 +67,204 @@ public:
     }
 };
 
-
 class SortTester {
-    const int NUM_RUNS = 5;
-
-    // merge sort
-    void merge(std::vector<int> &arr, int left, int mid, int right, std::vector<int> &temp) {
-        int i = left;
-        int j = mid + 1;
-        int k = left;
-
-        while (i <= mid && j <= right) {
-            if (arr[i] <= arr[j]) {
-                temp[k++] = arr[i++];
-            } else {
-                temp[k++] = arr[j++];
-            }
-        }
-
-        while (i <= mid) temp[k++] = arr[i++];
-        while (j <= right) temp[k++] = arr[j++];
-
-        for (i = left; i <= right; i++) arr[i] = temp[i];
-    }
-
-    void mergeSort(std::vector<int> &arr, int left, int right, std::vector<int> &temp) {
-        if (left < right) {
-            int mid = left + (right - left) / 2;
-            mergeSort(arr, left, mid, temp);
-            mergeSort(arr, mid + 1, right, temp);
-            merge(arr, left, mid, right, temp);
-        }
-    }
-
-    // insertion Sort
-    void insertionSort(std::vector<int> &arr, int left, int right) {
-        for (int i = left + 1; i <= right; i++) {
-            int key = arr[i];
+public:
+    static void insertionSort(std::vector<int> &a, int l, int r) {
+        for (int i = l + 1; i < r; ++i) {
+            int key = a[i];
             int j = i - 1;
-            while (j >= left && arr[j] > key) {
-                arr[j + 1] = arr[j];
-                j--;
+            while (j >= l && a[j] > key) {
+                a[j + 1] = a[j];
+                --j;
             }
-            arr[j + 1] = key;
+            a[j + 1] = key;
         }
     }
 
-    // hybrid sort
-    void hybridMergeSort(std::vector<int> &arr, int left, int right, std::vector<int> &temp, int threshold) {
-        if (right - left + 1 <= threshold) {
-            insertionSort(arr, left, right);
+    static void mergeRanges(std::vector<int> &a, int l, int m, int r, std::vector<int> &tmp) {
+        int i = l;
+        int j = m;
+        int k = l;
+        while (i < m && j < r) {
+            if (a[i] <= a[j]) {
+                tmp[k++] = a[i++];
+            } else {
+                tmp[k++] = a[j++];
+            }
+        }
+
+        while (i < m) {
+            tmp[k++] = a[i++];
+        }
+
+        while (j < r) {
+            tmp[k++] = a[j++];
+        }
+
+        for (int idx = l; idx < r; ++idx) {
+            a[idx] = tmp[idx];
+        }
+    }
+
+    static void mergeSortStdRec(std::vector<int> &a, int l, int r, std::vector<int> &tmp) {
+        if (r - l <= 1) {
             return;
         }
 
-        if (left < right) {
-            int mid = left + (right - left) / 2;
-            hybridMergeSort(arr, left, mid, temp, threshold);
-            hybridMergeSort(arr, mid + 1, right, temp, threshold);
-            merge(arr, left, mid, right, temp);
-        }
+        int m = l + (r - l) / 2;
+        mergeSortStdRec(a, l, m, tmp);
+        mergeSortStdRec(a, m, r, tmp);
+        mergeRanges(a, l, m, r, tmp);
     }
 
-    long long measureStandard(std::vector<int> arr) {
-        std::vector<int> temp(arr.size());
-        auto start = std::chrono::high_resolution_clock::now();
-        mergeSort(arr, 0, arr.size() - 1, temp);
-        auto end = std::chrono::high_resolution_clock::now();
-        return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    static void mergeSortStandard(std::vector<int> &a) {
+        std::vector<int> tmp(a.size());
+        mergeSortStdRec(a, 0, static_cast<int>(a.size()), tmp);
     }
 
-    long long measureHybrid(std::vector<int> arr, int threshold) {
-        std::vector<int> temp(arr.size());
-        auto start = std::chrono::high_resolution_clock::now();
-        hybridMergeSort(arr, 0, arr.size() - 1, temp, threshold);
-        auto end = std::chrono::high_resolution_clock::now();
-        return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    }
-
-public:
-    void runExperiments(ArrayGenerator &generator, const std::vector<int> &sizes,
-                        const std::vector<int> &thresholds) {
-
-        std::ofstream file_standard;
-        file_standard.open("../SET3/A2/standard_results.csv");
-
-        std::ofstream file_hybrid;
-        file_hybrid.open("../SET3/A2/hybrid_results.csv");
-
-        file_standard << "size,type,time\n";
-        file_hybrid << "size,type,threshold,time\n";
-
-        const char *types[3] = {"random", "reversed", "almost_sorted"};
-
-        for (int size: sizes) {
-            std::cout << "size processing: " << size << std::endl;
-
-            for (int type = 0; type < 3; type++) {
-                std::vector<long long> times;
-                for (int run = 0; run < NUM_RUNS; run++) {
-                    std::vector<int> arr;
-                    if (type == 0) arr = generator.getRandomSubarray(size);
-                    else if (type == 1) arr = generator.getReversedSubarray(size);
-                    else arr = generator.getAlmostSortedSubarray(size);
-
-                    times.push_back(measureStandard(arr));
-                }
-                std::sort(times.begin(), times.end());
-                long long median = times[NUM_RUNS / 2];
-                file_standard << size << "," << types[type] << "," << median << "\n";
-            }
-
-            for (int threshold: thresholds) {
-                for (int type = 0; type < 3; type++) {
-                    std::vector<long long> times;
-                    for (int run = 0; run < NUM_RUNS; run++) {
-                        std::vector<int> arr;
-                        if (type == 0) arr = generator.getRandomSubarray(size);
-                        else if (type == 1) arr = generator.getReversedSubarray(size);
-                        else arr = generator.getAlmostSortedSubarray(size);
-
-                        times.push_back(measureHybrid(arr, threshold));
-                    }
-                    std::sort(times.begin(), times.end());
-                    long long median = times[NUM_RUNS / 2];
-                    file_hybrid << size << "," << types[type] << "," << threshold << "," << median << "\n";
-                }
-            }
+    static void mergeSortHybridRec(std::vector<int> &a, int l, int r, std::vector<int> &tmp, int threshold) {
+        if (r - l <= threshold) {
+            insertionSort(a, l, r);
+            return;
         }
 
-        file_standard.close();
-        file_hybrid.close();
-        std::cout << "save in A2" << std::endl;
+        int m = l + (r - l) / 2;
+        mergeSortHybridRec(a, l, m, tmp, threshold);
+        mergeSortHybridRec(a, m, r, tmp, threshold);
+        mergeRanges(a, l, m, r, tmp);
+    }
+
+    static void mergeSortHybrid(std::vector<int> &a, int threshold) {
+        std::vector<int> tmp(a.size());
+        mergeSortHybridRec(a, 0, static_cast<int>(a.size()), tmp, threshold);
+    }
+
+    template<typename Func>
+    static double measureMedianMs(const std::vector<int> &arr, Func func, int repeats) {
+        std::vector<double> times;
+        times.reserve(repeats);
+
+        for (int r = 0; r < repeats; ++r) {
+            std::vector<int> copy = arr;
+            auto start = std::chrono::high_resolution_clock::now();
+            func(copy);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+            double ms = static_cast<double>(us) / 1000.0;
+            times.push_back(ms);
+        }
+
+        std::sort(times.begin(), times.end());
+        if (repeats % 2 == 1) {
+            return times[repeats / 2];
+        }
+        return (times[repeats / 2 - 1] + times[repeats / 2]) / 2.0;
     }
 };
 
 int main() {
-    ArrayGenerator generator = ArrayGenerator(100000);
+    const int MAX_SIZE = 100000;
+    const int START_SIZE = 500;
+    const int STEP = 100;
+    const int REPEATS = 5;
+    const std::vector thresholds = {5, 10, 20, 30, 50};
 
+    ArrayGenerator gen(MAX_SIZE);
 
-    std::vector<int> sizes;
-    for (int size = 500; size <= 100000; size += 100) {
-        sizes.push_back(size);
+    std::ofstream std_random_file("standard_random.csv");
+    std::ofstream std_reversed_file("standard_reversed.csv");
+    std::ofstream std_almost_file("standard_almost_sorted.csv");
+
+    std_random_file << "size,ms\n";
+    std_reversed_file << "size,ms\n";
+    std_almost_file << "size,ms\n";
+
+    std::ofstream hyb_random_file("hybrid_random.csv");
+    std::ofstream hyb_reversed_file("hybrid_reversed.csv");
+    std::ofstream hyb_almost_file("hybrid_almost_sorted.csv");
+
+    hyb_random_file << "size,t5,t10,t20,t30,t50\n";
+    hyb_reversed_file << "size,t5,t10,t20,t30,t50\n";
+    hyb_almost_file << "size,t5,t10,t20,t30,t50\n";
+
+    for (int n = START_SIZE; n <= MAX_SIZE; n += STEP) {
+        std::cout << "size = " << n << std::endl;
+
+        std::vector<int> arr_random = gen.getRandomSubarray(n);
+        std::vector<int> arr_reversed = gen.getReversedSubarray(n);
+        std::vector<int> arr_almost = gen.getAlmostSortedSubarray(n);
+
+        // --- STANDARD MERGE SORT ---
+        double t_std_random = SortTester::measureMedianMs(arr_random, [](std::vector<int> &v) {
+            SortTester::mergeSortStandard(v);
+        }, REPEATS);
+
+        double t_std_reversed = SortTester::measureMedianMs(arr_reversed, [](std::vector<int> &v) {
+            SortTester::mergeSortStandard(v);
+        }, REPEATS);
+
+        double t_std_almost = SortTester::measureMedianMs(arr_almost, [](std::vector<int> &v) {
+            SortTester::mergeSortStandard(v);
+        }, REPEATS);
+
+        std_random_file << n << "," << std::fixed << std::setprecision(6) << t_std_random << "\n";
+        std_reversed_file << n << "," << std::fixed << std::setprecision(6) << t_std_reversed << "\n";
+        std_almost_file << n << "," << std::fixed << std::setprecision(6) << t_std_almost << "\n";
+
+        // --- HYBRID MERGE+INSERTION SORT ---
+        std::vector<double> hyb_random_times;
+        std::vector<double> hyb_reversed_times;
+        std::vector<double> hyb_almost_times;
+
+        hyb_random_times.reserve(thresholds.size());
+        hyb_reversed_times.reserve(thresholds.size());
+        hyb_almost_times.reserve(thresholds.size());
+
+        for (int thr: thresholds) {
+            double t_hyb_random = SortTester::measureMedianMs(arr_random, [thr](std::vector<int> &v) {
+                SortTester::mergeSortHybrid(v, thr);
+            }, REPEATS);
+
+            double t_hyb_reversed = SortTester::measureMedianMs(arr_reversed, [thr](std::vector<int> &v) {
+                SortTester::mergeSortHybrid(v, thr);
+            }, REPEATS);
+
+            double t_hyb_almost = SortTester::measureMedianMs(arr_almost, [thr](std::vector<int> &v) {
+                SortTester::mergeSortHybrid(v, thr);
+            }, REPEATS);
+
+            hyb_random_times.push_back(t_hyb_random);
+            hyb_reversed_times.push_back(t_hyb_reversed);
+            hyb_almost_times.push_back(t_hyb_almost);
+        }
+
+        hyb_random_file << n;
+        for (double val: hyb_random_times) {
+            hyb_random_file << "," << std::fixed << std::setprecision(6) << val;
+        }
+        hyb_random_file << "\n";
+
+        hyb_reversed_file << n;
+        for (double val: hyb_reversed_times) {
+            hyb_reversed_file << "," << std::fixed << std::setprecision(6) << val;
+        }
+        hyb_reversed_file << "\n";
+
+        hyb_almost_file << n;
+        for (double val: hyb_almost_times) {
+            hyb_almost_file << "," << std::fixed << std::setprecision(6) << val;
+        }
+        hyb_almost_file << "\n";
     }
 
-    std::vector thresholds = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
+    std_random_file.close();
+    std_reversed_file.close();
+    std_almost_file.close();
 
-    SortTester tester;
-    tester.runExperiments(generator, sizes, thresholds);
+    hyb_random_file.close();
+    hyb_reversed_file.close();
+    hyb_almost_file.close();
 
+    std::cout << "done" << std::endl;
     return 0;
 }
